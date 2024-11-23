@@ -47,7 +47,7 @@ private extension AddExpensesView {
             Spacer()
             Text("$\(totalExpense, specifier: "%.2f")")
                 .font(.headline)
-                .foregroundColor(.blue)
+                .foregroundColor(.red)
         }
         .padding()
     }
@@ -60,7 +60,7 @@ private extension AddExpensesView {
                 keyboardType: .decimalPad,
                 borderColor: isAmountValid ? .gray : .red
             )
-            .onChange(of: expenseAmount) { newValue in
+            .onChange(of: expenseAmount) { oldValue, newValue in
                 validateAmount()
             }
 
@@ -81,7 +81,7 @@ private extension AddExpensesView {
                 Text("Add Expense")
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.blue)
+                    .background(Color.red)
                     .foregroundColor(.white)
                     .cornerRadius(10)
             }
@@ -91,7 +91,7 @@ private extension AddExpensesView {
 
     var addNewCategoryView: some View {
         VStack(alignment: .leading) {
-            CustomTextField(placeholder: "New Category Name", text: $newCategoryName, borderColor: .blue)
+            CustomTextField(placeholder: "New Category Name", text: $newCategoryName, borderColor: .red)
 
             HStack {
                 Button("Cancel") {
@@ -105,7 +105,7 @@ private extension AddExpensesView {
                     addNewCategory()
                 }
                 .disabled(newCategoryName.isEmpty)
-                .foregroundColor(.blue)
+                .foregroundColor(.red)
             }
         }
         .padding(.vertical)
