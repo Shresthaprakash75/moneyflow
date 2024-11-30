@@ -1,5 +1,6 @@
 import SwiftUI
 
+// MARK: - Expense Model
 struct Expense: Identifiable, Codable {
     var id = UUID()
     let amount: Double
@@ -7,17 +8,17 @@ struct Expense: Identifiable, Codable {
     let category: String
 }
 
+// MARK: - AddExpensesView
 struct AddExpensesView: View {
     @State private var expenses: [Expense] = []
     @State private var expenseAmount: String = ""
     @State private var expenseDescription: String = ""
     @State private var selectedCategory: String = ""
     @State private var categories: [String] = ["Food", "Socializing", "Transport", "Shopping", "Other"]
-    @State private var isAddingNewCategory: Bool = false
-    @State private var newCategoryName: String = ""
     @State private var isAmountValid: Bool = true
+    @State private var isManagingCategories: Bool = false
 
-    var totalExpense: Double {
+    private var totalExpense: Double {
         expenses.reduce(0) { $0 + $1.amount }
     }
 
@@ -25,15 +26,14 @@ struct AddExpensesView: View {
         NavigationView {
             VStack {
                 totalExpenseView
-
-                Form {
-                    addExpenseSection
-                }
-
+                Form { addExpenseSection }
                 expenseList
             }
             .navigationTitle("Expense Tracker")
             .onAppear(perform: loadExpenses)
+            .sheet(isPresented: $isManagingCategories) {
+                ManageCategoriesView(categories: $categories)
+            }
         }
     }
 }
@@ -60,21 +60,20 @@ private extension AddExpensesView {
                 keyboardType: .decimalPad,
                 borderColor: isAmountValid ? .gray : .red
             )
-            .onChange(of: expenseAmount) { oldValue, newValue in
-                validateAmount()
-            }
+            .onChange(of: expenseAmount) { oldState, newState in validateAmount() }
 
             CustomTextField(placeholder: "Description (e.g., Lunch)", text: $expenseDescription)
 
-            CategoryPicker(
-                categories: categories,
-                selectedCategory: $selectedCategory,
-                isAddingNewCategory: $isAddingNewCategory
-            )
-
-            if isAddingNewCategory {
-                addNewCategoryView
-                    .transition(.opacity.combined(with: .slide))
+            Picker("Category", selection: $selectedCategory) {
+                ForEach(categories, id: \.self) { Text($0) }
+                Text("Manage Categories").tag("Manage Categories")
+            }
+            .pickerStyle(MenuPickerStyle())
+            .onChange(of: selectedCategory) { _, newValue in
+                if newValue == "Manage Categories" {
+                    selectedCategory = ""
+                    isManagingCategories = true
+                }
             }
 
             Button(action: addExpense) {
@@ -89,28 +88,6 @@ private extension AddExpensesView {
         }
     }
 
-    var addNewCategoryView: some View {
-        VStack(alignment: .leading) {
-            CustomTextField(placeholder: "New Category Name", text: $newCategoryName, borderColor: .red)
-
-            HStack {
-                Button("Cancel") {
-                    cancelNewCategory()
-                }
-                .foregroundColor(.red)
-
-                Spacer()
-
-                Button("Add") {
-                    addNewCategory()
-                }
-                .disabled(newCategoryName.isEmpty)
-                .foregroundColor(.red)
-            }
-        }
-        .padding(.vertical)
-    }
-
     var expenseList: some View {
         List {
             Section(header: Text("Expenses")) {
@@ -119,18 +96,7 @@ private extension AddExpensesView {
                         .foregroundColor(.gray)
                 } else {
                     ForEach(expenses) { expense in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(expense.description)
-                                    .font(.headline)
-                                Text(expense.category)
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                            Text("$\(expense.amount, specifier: "%.2f")")
-                                .foregroundColor(.gray)
-                        }
+                        ExpenseRow(expense: expense)
                     }
                 }
             }
@@ -138,7 +104,7 @@ private extension AddExpensesView {
     }
 }
 
-// MARK: - Helper Functions
+// MARK: - Components
 private extension AddExpensesView {
     var isFormValid: Bool {
         !expenseAmount.isEmpty &&
@@ -157,21 +123,6 @@ private extension AddExpensesView {
             expenses.append(newExpense)
             saveExpenses()
             clearExpenseForm()
-        }
-    }
-
-    func addNewCategory() {
-        if !newCategoryName.isEmpty {
-            categories.append(newCategoryName)
-            selectedCategory = newCategoryName
-            cancelNewCategory()
-        }
-    }
-
-    func cancelNewCategory() {
-        withAnimation {
-            newCategoryName = ""
-            isAddingNewCategory = false
         }
     }
 
@@ -195,7 +146,97 @@ private extension AddExpensesView {
     }
 }
 
-// MARK: - Custom Components
+struct ExpenseRow: View {
+    let expense: Expense
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(expense.description).font(.headline)
+                Text(expense.category).font(.subheadline).foregroundColor(.gray)
+            }
+            Spacer()
+            Text("$\(expense.amount, specifier: "%.2f")").foregroundColor(.gray)
+        }
+    }
+}
+
+// MARK: - ManageCategoriesView
+struct ManageCategoriesView: View {
+    @Binding var categories: [String]
+    @Environment(\.presentationMode) var presentationMode
+    @State private var newCategoryName: String = ""
+    @State private var editingCategoryIndex: Int? = nil
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                categoryList
+                newCategoryField
+            }
+            .navigationTitle("Manage Categories")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") { presentationMode.wrappedValue.dismiss() }
+                }
+            }
+        }
+    }
+
+    private var categoryList: some View {
+        List {
+            ForEach(categories.indices, id: \.self) { index in
+                HStack {
+                    if editingCategoryIndex == index {
+                        TextField("Edit Category", text: Binding(
+                            get: { categories[index] },
+                            set: { categories[index] = $0 }
+                        ))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    } else {
+                        Text(categories[index])
+                    }
+                    Spacer()
+                    Button(action: { toggleEditing(index: index) }) {
+                        Image(systemName: editingCategoryIndex == index ? "checkmark" : "pencil")
+                    }
+                }
+            }
+            .onDelete(perform: deleteCategory)
+        }
+    }
+
+    private var newCategoryField: some View {
+        HStack {
+            TextField("New Category", text: $newCategoryName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+
+            Button("Add", action: addCategory)
+                .disabled(newCategoryName.isEmpty)
+                .padding(.horizontal)
+                .foregroundColor(.blue)
+        }
+        .padding()
+    }
+
+    private func toggleEditing(index: Int) {
+        editingCategoryIndex = editingCategoryIndex == index ? nil : index
+    }
+
+    private func addCategory() {
+        if !newCategoryName.isEmpty {
+            categories.append(newCategoryName)
+            newCategoryName = ""
+        }
+    }
+
+    private func deleteCategory(at offsets: IndexSet) {
+        categories.remove(atOffsets: offsets)
+    }
+}
+
+// MARK: - CustomTextField
 struct CustomTextField: View {
     let placeholder: String
     @Binding var text: String
@@ -213,30 +254,7 @@ struct CustomTextField: View {
     }
 }
 
-struct CategoryPicker: View {
-    let categories: [String]
-    @Binding var selectedCategory: String
-    @Binding var isAddingNewCategory: Bool
-
-    var body: some View {
-        Picker("Category", selection: $selectedCategory) {
-            ForEach(categories, id: \.self) { category in
-                Text(category)
-            }
-            Text("Add New Category").tag("Add New Category")
-        }
-        .pickerStyle(MenuPickerStyle())
-        .onChange(of: selectedCategory) { oldValue, newValue in
-            if newValue == "Add New Category" {
-                withAnimation {
-                    isAddingNewCategory = true
-                    selectedCategory = ""
-                }
-            }
-        }
-    }
-}
-
+// MARK: - Preview
 struct AddExpensesView_Previews: PreviewProvider {
     static var previews: some View {
         AddExpensesView()
